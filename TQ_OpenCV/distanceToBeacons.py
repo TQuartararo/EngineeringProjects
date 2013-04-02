@@ -7,7 +7,7 @@ known, the location of the stereo rig can be found with respect to the beacon co
 circleIntersections() function.
 
 To Do:  [Create third criteria of specific color above or below another color]
-  Get Serial working
+	Get Serial working
 	Get distance working, specifically distance to beacon 1, beacon 2, etc.
 	Make circleIntersections() reject points far away
 
