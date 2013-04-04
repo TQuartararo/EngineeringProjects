@@ -2,6 +2,8 @@
 This code is an augmented version of calibration code by Abid.K (mail me at abidrahman2@gmail.com), which allows for the 
 calibration of two cameras simultaneously for stereo vision.
 
+Abid's code can be found here: https://github.com/abidrahmank/OpenCV-Python/blob/master/Other_Examples/camera_calibration.py
+
 '''
 
 import cv2.cv as cv
