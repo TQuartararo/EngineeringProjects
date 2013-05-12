@@ -1,226 +1,226 @@
-/* This code is going to be used to control the autobalancing portion
-of our robot.*/
-
-//needed for I2C protocol
-#include "Wire.h"
-
-//These next three libraries are all open source and specific to our IMU and motor shield
-#include "I2Cdev.h"//Open Source library written by Jeff Rowberg downloaded from https://github.com/jrowberg/i2cdevlib
-#include "MPU6050.h"//This file is included in the library by Jeff Rowberg
-#include "DualMC33926MotorShield.h"//Library by Pololu, download https://github.com/pololu/dual-mc33926-motor-shield
-
-//Basic math library
-#include <math.h>
-
-/*Define all of the variables for the program*/
-//Create variables of type MPU6050 (IMU) and Dual...(motor shield)
-MPU6050 accelgyro;
-DualMC33926MotorShield md;
-
-//timing for the program
-float dt = 0.0001;
-
-//establish the variables that the IMU will be assigning 
-int16_t ax, ay, az;
-int16_t gx, gy, gz;
-
-//Accelerometer variables
-float AccY_Offset = -270;
-double AccY = 0;//Acceleration after offset is taken into account
-double gravity;//Acceleration due to gravity
-double tiltAcc;//Tilt angle found by accelerometer
-
-//Gyroscope Variables
-float GyroX_Offset = -140;
-float GyroZ_Offset = 0;
-double tiltRate;//Gyro reading after taking into account the offset
-double previoustiltRate = 0.0;//Used for the numeric integration to find the angle
-
-//filter
-float alpha = 0.99;//Constant used for the high and low(1-alpha) pass filters
-double angle = 0;//Need an initial angle to start the program
-
-//The gain values for the program
-float kp = 2200;
-float ki = 0;
-float kd = 2700;
-float setpoint = 0;//Setpoint that can change dynamically throughout the program
-
-//range of acceptable degrees that robot can span without touching the ground used for normalizing
-int range = 80;
-
-//define all of the error variables
-double error;
-double previousError = 0;
-double pastError = 0.0;
-double derivError = 0;
-
-//define motor variables
-int correction;
-int power = 400;//max value that can be sent to the motors
-
-//encoder variables
-#define encoder0PinA 2
-#define encoder0PinB 3
-double integralDrift = 0;
-double previousDrift;
-float encoderKp;
-float encoderKi;
-volatile unsigned int encoder0Pos = 10000;
-
-
-//StopIfFault() halts the motors if an error occurs, such as too much or too little current draw.
-void stopIfFault()
-{
-  //md.getFault() is a built in function of the motor shield
-  if (md.getFault())
-  {
-    Serial.println("fault");//display the fault message to the Serial monitor
-    md.setM2Speed(0);//set the speed of motor 2 to zero
-    md.setM1Speed(0);//set the speed of motor 1 to zero
-    while(1);//stop the program indefinitely to prevent any damage to electronics
-  }
-}
-
-/*This getAngle() function takes in the IMU data and performs the calculations necessary to obtain
-reliable, accurate tilt angle measurements. The angle is calculated using both the accelerometer and
-the gyroscope separately and then a high pass filter is applied to the gyro, a low pass to the 
-accelerometer, and the results are added. This is a simple complimentary filter that was inspired
-by a presentation by MIT entitled "The Balance Filter"*/
-double getAngle(){
-    // read raw accel/gyro measurements from device and assign to respective variables
-    accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
-    
-    // calculate tilt angle from accelerometer
-    AccY = (ay - AccY_Offset);//Take into account the accelerometer's offset
-    gravity = sqrt((square(az) + square(AccY)));//
-    tiltAcc = asin(AccY/gravity)*180/PI;//use the acceleration components to find tilt and convert to degrees
+/* This code is going to be used to control the autobalancing portion 
+of our robot.*/  
+  
+//needed for I2C protocol  
+#include "Wire.h"  
+  
+//These next three libraries are all open source and specific to our IMU and motor shield  
+#include "I2Cdev.h"//Open Source library written by Jeff Rowberg downloaded from https://github.com/jrowberg/i2cdevlib  
+#include "MPU6050.h"//This file is included in the library by Jeff Rowberg  
+#include "DualMC33926MotorShield.h"//Library by Pololu, download https://github.com/pololu/dual-mc33926-motor-shield  
+  
+//Basic math library  
+#include <math.h>  
+  
+/*Define all of the variables for the program*/  
+//Create variables of type MPU6050 (IMU) and Dual...(motor shield)  
+MPU6050 accelgyro;  
+DualMC33926MotorShield md;  
+  
+//timing for the program  
+float dt = 0.0001;  
+  
+//establish the variables that the IMU will be assigning   
+int16_t ax, ay, az;  
+int16_t gx, gy, gz;  
+  
+//Accelerometer variables  
+float AccY_Offset = -270;  
+double AccY = 0;//Acceleration after offset is taken into account  
+double gravity;//Acceleration due to gravity  
+double tiltAcc;//Tilt angle found by accelerometer  
+  
+//Gyroscope Variables  
+float GyroX_Offset = -140;  
+float GyroZ_Offset = 0;  
+double tiltRate;//Gyro reading after taking into account the offset  
+double previoustiltRate = 0.0;//Used for the numeric integration to find the angle  
+  
+//filter  
+float alpha = 0.99;//Constant used for the high and low(1-alpha) pass filters  
+double angle = 0;//Need an initial angle to start the program  
+  
+//The gain values for the program  
+float kp = 2200;  
+float ki = 0;  
+float kd = 2700;  
+float setpoint = 0;//Setpoint that can change dynamically throughout the program  
+  
+//range of acceptable degrees that robot can span without touching the ground used for normalizing  
+int range = 80;  
+  
+//define all of the error variables  
+double error;  
+double previousError = 0;  
+double pastError = 0.0;  
+double derivError = 0;  
+  
+//define motor variables  
+int correction;  
+int power = 400;//max value that can be sent to the motors  
+  
+//encoder variables  
+#define encoder0PinA 2  
+#define encoder0PinB 3  
+double integralDrift = 0;  
+double previousDrift;  
+float encoderKp;  
+float encoderKi;  
+volatile unsigned int encoder0Pos = 10000;  
+  
+  
+//StopIfFault() halts the motors if an error occurs, such as too much or too little current draw.  
+void stopIfFault()  
+{  
+  //md.getFault() is a built in function of the motor shield  
+  if (md.getFault())  
+  {  
+    Serial.println("fault");//display the fault message to the Serial monitor  
+    md.setM2Speed(0);//set the speed of motor 2 to zero  
+    md.setM1Speed(0);//set the speed of motor 1 to zero  
+    while(1);//stop the program indefinitely to prevent any damage to electronics  
+  }  
+}  
+  
+/*This getAngle() function takes in the IMU data and performs the calculations necessary to obtain 
+reliable, accurate tilt angle measurements. The angle is calculated using both the accelerometer and 
+the gyroscope separately and then a high pass filter is applied to the gyro, a low pass to the  
+accelerometer, and the results are added. This is a simple complimentary filter that was inspired 
+by a presentation by MIT entitled "The Balance Filter"*/  
+double getAngle(){  
+    // read raw accel/gyro measurements from device and assign to respective variables  
+    accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);  
+      
+    // calculate tilt angle from accelerometer  
+    AccY = (ay - AccY_Offset);//Take into account the accelerometer's offset  
+    gravity = sqrt((square(az) + square(AccY)));//  
+    tiltAcc = asin(AccY/gravity)*180/PI;//use the acceleration components to find tilt and convert to degrees  
+     
+    // calculate tilt angle from gyroscope  
+    tiltRate = (gx - GyroX_Offset)*90/(131*250);//account for offset and span  
+    //previoustiltRate = tiltRate;  
+    angle = alpha*(angle + dt*(previoustiltRate + tiltRate)) + (1-alpha)*(tiltAcc);//complimentary filter 0.005 instead of dt  
+    previoustiltRate = tiltRate;  
+  
+    return angle;  
+}  
+  
+/*Quadrature encoder code taken from arduino playground http://playground.arduino.cc/Main/RotaryEncoders*/  
+void doEncoderA(){  
+  
+  // look for a low-to-high on channel A  
+  if (digitalRead(encoder0PinA) == HIGH) {  
+  
+    // check channel B to see which way encoder is turning  
+    if (digitalRead(encoder0PinB) == LOW) {    
+      encoder0Pos = encoder0Pos + 1;         // CW  
+    }  
+    else {  
+      encoder0Pos = encoder0Pos - 1;         // CCW  
+    }  
+  }  
+  
+  else   // must be a high-to-low edge on channel A                                        
+  {  
+    // check channel B to see which way encoder is turning    
+    if (digitalRead(encoder0PinB) == HIGH) {    
+      encoder0Pos = encoder0Pos + 1;          // CW  
+    }  
+    else {  
+      encoder0Pos = encoder0Pos - 1;          // CCW  
+    }  
+  }  
+  
+  
+}  
+  
+void doEncoderB(){  
+  
+  // look for a low-to-high on channel B  
+  if (digitalRead(encoder0PinB) == HIGH) {    
+  
+   // check channel A to see which way encoder is turning  
+    if (digitalRead(encoder0PinA) == HIGH) {    
+      encoder0Pos = encoder0Pos + 1;         // CW  
+    }  
+    else {  
+      encoder0Pos = encoder0Pos - 1;         // CCW  
+    }  
+  }  
+  
+  // Look for a high-to-low on channel B  
+  
+  else {  
+    // check channel B to see which way encoder is turning    
+    if (digitalRead(encoder0PinA) == LOW) {    
+      encoder0Pos = encoder0Pos + 1;          // CW  
+    }  
+    else {  
+      encoder0Pos = encoder0Pos - 1;          // CCW  
+    }  
+  }  
+  
+}   
+  
+double drift(double encoderResult){  
+/*The goal of this function is to take the motor correction, and using the encoders, find out how far the robot has drifted. Using the results of this function, the setpoint can be adjusted to attempt to maintain a zero drift state. */  
+  encoderResult = encoderResult - 10000;  
+    encoderKp = 3.1;  
+    encoderKi = 0.011;  
+    integralDrift = (integralDrift + encoderResult);  
+         
+    //setpoint for balance point is 3.1  
+    double setpoint = 3.1 - (kp*encoderResult + ki*integralDrift)/10000.0;  
+          
+return setpoint;  
+}  
+  
+void setup() {  
+    // join I2C bus   
+    Wire.begin();  
+  
+    // encoder pin on interrupt 0 (pin 2)  
+    attachInterrupt(0, doEncoderA, CHANGE);  
+  
+    // encoder pin on interrupt 1 (pin 3)  
+    attachInterrupt(1, doEncoderB, CHANGE);   
+      
+    //set encoder pins   
+    pinMode(encoder0PinA, INPUT);  
+    pinMode(encoder0PinB, INPUT);  
+  
+    // initialize serial communication  
+    Serial.begin(115200);  
+  
+    // initialize IMU  
+    Serial.print("Initializing I2C devices...");  
+    accelgyro.initialize();  
+  
+    // verify connection  
+    Serial.print("Testing device connections...");  
+    Serial.print(accelgyro.testConnection() ? "MPU6050 connection successful" : "MPU6050 connection failed");  
+         
+    //initialize motor shield  
+    md.init();  
+}  
+  
    
-    // calculate tilt angle from gyroscope
-    tiltRate = (gx - GyroX_Offset)*90/(131*250);//account for offset and span
-    //previoustiltRate = tiltRate;
-    angle = alpha*(angle + dt*(previoustiltRate + tiltRate)) + (1-alpha)*(tiltAcc);//complimentary filter 0.005 instead of dt
-    previoustiltRate = tiltRate;
-
-    return angle;
-}
-
-/*Quadrature encoder code taken from arduino playground http://playground.arduino.cc/Main/RotaryEncoders*/
-void doEncoderA(){
-
-  // look for a low-to-high on channel A
-  if (digitalRead(encoder0PinA) == HIGH) {
-
-    // check channel B to see which way encoder is turning
-    if (digitalRead(encoder0PinB) == LOW) {  
-      encoder0Pos = encoder0Pos + 1;         // CW
-    }
-    else {
-      encoder0Pos = encoder0Pos - 1;         // CCW
-    }
-  }
-
-  else   // must be a high-to-low edge on channel A                                      
-  {
-    // check channel B to see which way encoder is turning  
-    if (digitalRead(encoder0PinB) == HIGH) {  
-      encoder0Pos = encoder0Pos + 1;          // CW
-    }
-    else {
-      encoder0Pos = encoder0Pos - 1;          // CCW
-    }
-  }
-
-
-}
-
-void doEncoderB(){
-
-  // look for a low-to-high on channel B
-  if (digitalRead(encoder0PinB) == HIGH) {  
-
-   // check channel A to see which way encoder is turning
-    if (digitalRead(encoder0PinA) == HIGH) {  
-      encoder0Pos = encoder0Pos + 1;         // CW
-    }
-    else {
-      encoder0Pos = encoder0Pos - 1;         // CCW
-    }
-  }
-
-  // Look for a high-to-low on channel B
-
-  else {
-    // check channel B to see which way encoder is turning  
-    if (digitalRead(encoder0PinA) == LOW) {  
-      encoder0Pos = encoder0Pos + 1;          // CW
-    }
-    else {
-      encoder0Pos = encoder0Pos - 1;          // CCW
-    }
-  }
-
-} 
-
-double drift(double encoderResult){
-/*The goal of this function is to take the motor correction, and using the encoders, find out how far the robot has drifted. Using the results of this function, the setpoint can be adjusted to attempt to maintain a zero drift state. */
-  encoderResult = encoderResult - 10000;
-	encoderKp = 3.1;
-	encoderKi = 0.011;
-	integralDrift = (integralDrift + encoderResult);
-       
-	//setpoint for balance point is 3.1
-	double setpoint = 3.1 - (kp*encoderResult + ki*integralDrift)/10000.0;
-       	
-return setpoint;
-}
-
-void setup() {
-    // join I2C bus 
-    Wire.begin();
-	
-    // encoder pin on interrupt 0 (pin 2)
-    attachInterrupt(0, doEncoderA, CHANGE);
-
-    // encoder pin on interrupt 1 (pin 3)
-    attachInterrupt(1, doEncoderB, CHANGE); 
-    
-    //set encoder pins 
-    pinMode(encoder0PinA, INPUT);
-    pinMode(encoder0PinB, INPUT);
-
-    // initialize serial communication
-    Serial.begin(115200);
-
-    // initialize IMU
-    Serial.print("Initializing I2C devices...");
-    accelgyro.initialize();
-
-    // verify connection
-    Serial.print("Testing device connections...");
-    Serial.print(accelgyro.testConnection() ? "MPU6050 connection successful" : "MPU6050 connection failed");
-       
-    //initialize motor shield
-    md.init();
-}
-
- 
-/*This is the main portion of our program*/
-void loop() {
-  //adjust the setpoint based on the encoder results
-  setpoint = drift(encoder0Pos);
-
-  //Retrieve the angle and find the errors for the PID algorithm  
-  angle = getAngle();//call the function used to find the filtered IMU tilt angle
-  error = angle - setpoint;//calculate the error 
-  error = (error/range);//normalize the error with respect to the range 
-  pastError = 0.9*(pastError + error);//Integral error with a decay factor to expel accumulated errors
-  derivError = (error - previousError);//Derivative error proportional to the change in error
-  previousError = error;//reassign the current error as the previous error for the next loop
-  correction = (power/100)*(kp*error + ki*pastError + kd*derivError);//The sum of the gain values and errors 
-
- //Set the motor speeds depending on the correction value, stop the program if any faults are detected. 
- md.setM2Speed(correction); 
- md.setM1Speed(correction);
- stopIfFault();
-}
+/*This is the main portion of our program*/  
+void loop() {  
+  //adjust the setpoint based on the encoder results  
+  setpoint = drift(encoder0Pos);  
+  
+  //Retrieve the angle and find the errors for the PID algorithm    
+  angle = getAngle();//call the function used to find the filtered IMU tilt angle  
+  error = angle - setpoint;//calculate the error   
+  error = (error/range);//normalize the error with respect to the range   
+  pastError = 0.9*(pastError + error);//Integral error with a decay factor to expel accumulated errors  
+  derivError = (error - previousError);//Derivative error proportional to the change in error  
+  previousError = error;//reassign the current error as the previous error for the next loop  
+  correction = (power/100)*(kp*error + ki*pastError + kd*derivError);//The sum of the gain values and errors   
+  
+ //Set the motor speeds depending on the correction value, stop the program if any faults are detected.   
+ md.setM2Speed(correction);   
+ md.setM1Speed(correction);  
+ stopIfFault();  
+}  
